@@ -1,6 +1,6 @@
 # mcp-mailchimp
 
-Production-grade MCP server for the [Mailchimp Marketing API](https://mailchimp.com/developer/marketing/). 28 tools covering campaigns, audiences, members, tags, segments, templates, reports, and automations.
+Production-grade MCP server for the [Mailchimp Marketing API](https://mailchimp.com/developer/marketing/). 33 tools covering campaigns, audiences, members, tags, segments, templates, reports, and automations.
 
 Built for Claude Desktop, Claude Code, Cursor, and any MCP-compatible client.
 
@@ -71,7 +71,7 @@ Or run directly:
 MAILCHIMP_API_KEY=your-key mcp-mailchimp
 ```
 
-## Tools (28)
+## Tools (33)
 
 ### Account
 | Tool | Description |
@@ -100,12 +100,15 @@ MAILCHIMP_API_KEY=your-key mcp-mailchimp
 | Tool | Description |
 |------|-------------|
 | `get_campaign_report` | Performance report (opens, clicks, bounces, unsubscribes) |
+| `get_click_report` | Click details — which URLs were clicked and how often |
+| `get_open_report` | Open details — which subscribers opened and when |
 
 ### Audiences
 | Tool | Description |
 |------|-------------|
 | `list_audiences` | List all audiences with subscriber counts |
 | `get_audience` | Get audience details and stats |
+| `create_audience` | Create a new audience/list |
 
 ### Members
 | Tool | Description |
@@ -128,11 +131,13 @@ MAILCHIMP_API_KEY=your-key mcp-mailchimp
 |------|-------------|
 | `list_segments` | List saved segments for an audience |
 | `get_segment_members` | List members in a segment |
+| `create_segment` | Create a static segment from email addresses |
 
 ### Templates
 | Tool | Description |
 |------|-------------|
 | `list_templates` | List available email templates |
+| `get_template` | Get template details and HTML content |
 
 ### Automations
 | Tool | Description |

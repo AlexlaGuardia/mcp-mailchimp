@@ -1,4 +1,4 @@
-"""MCP server for the Mailchimp Marketing API — 28 tools."""
+"""MCP server for the Mailchimp Marketing API — 33 tools."""
 
 import json
 import os
@@ -12,7 +12,7 @@ mcp = FastMCP(
     "mcp-mailchimp",
     instructions=(
         "Production-grade MCP server for the Mailchimp Marketing API. "
-        "28 tools for campaigns, audiences, members, tags, segments, "
+        "33 tools for campaigns, audiences, members, tags, segments, "
         "templates, reports, and automations."
     ),
 )
@@ -324,6 +324,50 @@ async def get_campaign_report(campaign_id: str) -> str:
     })
 
 
+@mcp.tool()
+async def get_click_report(campaign_id: str, count: int = 20) -> str:
+    """Get click details for a campaign — which URLs were clicked and how many times."""
+    mc = get_client()
+    data = await mc.get(
+        f"/reports/{campaign_id}/click-details",
+        params={"count": min(count, 100)},
+    )
+    urls = []
+    for u in data.get("urls_clicked", []):
+        urls.append({
+            "url": u.get("url", ""),
+            "total_clicks": u.get("total_clicks", 0),
+            "unique_clicks": u.get("unique_clicks", 0),
+            "click_percentage": u.get("click_percentage", 0),
+            "last_click": u.get("last_click", ""),
+        })
+    return _fmt({"campaign_id": campaign_id, "total_urls": len(urls), "urls": urls})
+
+
+@mcp.tool()
+async def get_open_report(campaign_id: str, count: int = 20, offset: int = 0) -> str:
+    """Get open details for a campaign — which subscribers opened and when."""
+    mc = get_client()
+    data = await mc.get(
+        f"/reports/{campaign_id}/open-details",
+        params={"count": min(count, 100), "offset": offset},
+    )
+    members = []
+    for m in data.get("members", []):
+        members.append({
+            "email": m.get("email_address", ""),
+            "opens_count": m.get("opens_count", 0),
+            "first_open": m.get("first_open", ""),
+            "last_open": m.get("last_open", ""),
+        })
+    return _fmt({
+        "campaign_id": campaign_id,
+        "total_opens": data.get("total_opens", 0),
+        "total_items": data.get("total_items", 0),
+        "members": members,
+    })
+
+
 # ══════════════════════════════════════════════════════════════════════
 # AUDIENCES (LISTS)
 # ══════════════════════════════════════════════════════════════════════
@@ -367,6 +411,44 @@ async def get_audience(list_id: str) -> str:
         "click_rate": stats.get("click_rate", 0),
         "last_campaign_sent": stats.get("campaign_last_sent", ""),
         "created_at": a.get("date_created", ""),
+    })
+
+
+@mcp.tool()
+async def create_audience(
+    name: str,
+    from_email: str,
+    company: str,
+    permission_reminder: str = "You signed up on our website.",
+    from_name: str = "",
+    country: str = "US",
+) -> str:
+    """Create a new audience/list. Requires name, sender email, and company name."""
+    mc = get_client()
+    body = {
+        "name": name,
+        "permission_reminder": permission_reminder,
+        "email_type_option": True,
+        "contact": {
+            "company": company,
+            "address1": "",
+            "city": "",
+            "state": "",
+            "zip": "",
+            "country": country,
+        },
+        "campaign_defaults": {
+            "from_name": from_name or company,
+            "from_email": from_email,
+            "subject": "",
+            "language": "en",
+        },
+    }
+    a = await mc.post("/lists", json=body)
+    return _fmt({
+        "id": a["id"],
+        "name": a.get("name", ""),
+        "message": "Audience created.",
     })
 
 
@@ -618,6 +700,26 @@ async def get_segment_members(
     return _fmt({"total_items": data.get("total_items", 0), "members": members})
 
 
+@mcp.tool()
+async def create_segment(
+    list_id: str,
+    name: str,
+    emails: str = "",
+) -> str:
+    """Create a static segment from email addresses. emails: comma-separated list."""
+    mc = get_client()
+    body: dict[str, Any] = {"name": name}
+    if emails:
+        body["static_segment"] = [e.strip() for e in emails.split(",") if e.strip()]
+    s = await mc.post(f"/lists/{list_id}/segments", json=body)
+    return _fmt({
+        "id": s.get("id", ""),
+        "name": s.get("name", ""),
+        "member_count": s.get("member_count", 0),
+        "message": "Segment created.",
+    })
+
+
 # ══════════════════════════════════════════════════════════════════════
 # TEMPLATES
 # ══════════════════════════════════════════════════════════════════════
@@ -642,6 +744,22 @@ async def list_templates(count: int = 20, offset: int = 0) -> str:
             "created_at": t.get("date_created", ""),
         })
     return _fmt({"total_items": data.get("total_items", 0), "templates": templates})
+
+
+@mcp.tool()
+async def get_template(template_id: int) -> str:
+    """Get a template's details and HTML content."""
+    mc = get_client()
+    t = await mc.get(f"/templates/{template_id}")
+    return _fmt({
+        "id": t.get("id", ""),
+        "name": t.get("name", ""),
+        "type": t.get("type", ""),
+        "active": t.get("active", False),
+        "html": t.get("html", "")[:5000],
+        "created_at": t.get("date_created", ""),
+        "edited_at": t.get("date_edited", ""),
+    })
 
 
 # ══════════════════════════════════════════════════════════════════════

@@ -4,18 +4,15 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mcp-mailchimp"
-version = "0.1.0"
-description = "Production-grade MCP server for the Mailchimp Marketing API — 28 tools for campaigns, audiences, members, tags, templates, reports, and automations"
+version = "0.2.0"
+description = "Production-grade MCP server for the Mailchimp Marketing API — 33 tools for campaigns, audiences, members, tags, segments, templates, reports, and automations."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
-authors = [
-    { name = "Alex LaGuardia", email = "alex@alexlaguardia.dev" }
-]
-keywords = ["mcp", "mailchimp", "email", "marketing", "ai", "llm", "automation"]
+authors = [{ name = "Alex LaGuardia", email = "alex@alexlaguardia.dev" }]
+keywords = ["mcp", "mailchimp", "email-marketing", "ai", "model-context-protocol"]
 classifiers = [
     "Development Status :: 4 - Beta",
-    "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
@@ -23,11 +20,10 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Communications :: Email",
-    "Topic :: Software Development :: Libraries",
 ]
 dependencies = [
     "mcp>=1.0.0",
-    "httpx>=0.24.0",
+    "httpx>=0.26.0",
 ]
 
 [project.urls]
