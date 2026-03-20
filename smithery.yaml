@@ -1,0 +1,19 @@
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    required:
+      - mailchimpApiKey
+    properties:
+      mailchimpApiKey:
+        type: string
+        description: "Your Mailchimp API key (format: xxxxxxxxxx-usXX)"
+  commandFunction:
+    |-
+    (config) => ({
+      command: "mcp-mailchimp",
+      args: [],
+      env: {
+        MAILCHIMP_API_KEY: config.mailchimpApiKey
+      }
+    })
