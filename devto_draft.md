@@ -3,7 +3,7 @@ title: "33 Tools for Mailchimp in One MCP Server — Here's How I Built It"
 published: false
 description: "33 tools for the Mailchimp Marketing API, built with Python and the official MCP SDK. Free, open-source, and ready for Claude Desktop, Cursor, and any MCP client."
 tags: mcp, ai, python, mailchimp
-cover_image:
+cover_image: https://raw.githubusercontent.com/AlexlaGuardia/mcp-mailchimp/main/cover.png
 ---
 
 I wanted to manage my Mailchimp campaigns from Claude without copy-pasting data between tabs. The existing MCP servers for Mailchimp were either read-only, incomplete, or abandoned weekend projects with 3-5 tools.
