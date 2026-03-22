@@ -1,14 +1,14 @@
 ---
-title: "I Built an MCP Server for Mailchimp — Here's What I Learned"
+title: "33 Tools for Mailchimp in One MCP Server — Here's How I Built It"
 published: false
 description: "33 tools for the Mailchimp Marketing API, built with Python and the official MCP SDK. Free, open-source, and ready for Claude Desktop, Cursor, and any MCP client."
 tags: mcp, ai, python, mailchimp
 cover_image:
 ---
 
-Mailchimp has 12 million users. The MCP ecosystem has 19,000+ servers. And yet, finding a well-built Mailchimp MCP server is surprisingly hard — most are either read-only, incomplete, or abandoned weekend projects.
+I wanted to manage my Mailchimp campaigns from Claude without copy-pasting data between tabs. The existing MCP servers for Mailchimp were either read-only, incomplete, or abandoned weekend projects with 3-5 tools.
 
-So I built one that isn't.
+So I built one with 33 tools that actually covers the full API — campaigns, audiences, members, segments, templates, automations, and reports. Read and write.
 
 ## What It Does
 
@@ -153,12 +153,12 @@ Same JSON config as Claude Desktop in `.cursor/mcp.json`.
 
 ## Lessons for MCP Server Builders
 
-If you're building MCP servers, here's what I think actually matters:
+If you're building MCP servers, here's what Mailchimp specifically taught me:
 
-1. **Format your responses.** Don't dump raw API JSON on the AI. Extract the fields it needs to be useful.
-2. **Handle auth gotchas.** API key validation, clear error messages, no silent failures. Your users aren't debugging — the AI is.
-3. **Write copy-paste configs.** Claude Desktop, Claude Code, Cursor — give people the exact JSON. Every friction point loses a user.
-4. **Upsert over create+update.** Idempotent operations are safer when an AI is calling them.
+1. **Watch for silent identity schemes.** Mailchimp uses MD5 hashes of lowercased emails as member IDs — no error if you get it wrong, just empty responses. If your target API has non-obvious ID formats, abstract them away.
+2. **Prefer upsert over create+update.** Mailchimp's PUT endpoint does a safe upsert with `status_if_new`, so it won't accidentally resubscribe someone. Idempotent operations are always safer when an AI is making the calls.
+3. **Strip verbose responses.** Mailchimp returns `_links`, nested metadata, and redundant fields in every response. Extract only what the AI needs to reason about — the fewer tokens, the better the analysis.
+4. **Write copy-paste configs.** Claude Desktop, Claude Code, Cursor — give people the exact JSON block. Every friction point between install and first use loses a user.
 
 ## Links
 
@@ -168,4 +168,4 @@ If you're building MCP servers, here's what I think actually matters:
 
 ---
 
-*This is the first in a series of production-grade MCP servers I'm building for underserved SaaS platforms. Next up: WooCommerce. Follow me here or on [GitHub](https://github.com/AlexlaGuardia) to catch the next one.*
+*This is part of a series of production-grade MCP servers I'm building for underserved SaaS platforms. Also available: [WooCommerce](https://github.com/AlexlaGuardia/mcp-woocommerce), [FreshBooks](https://github.com/AlexlaGuardia/mcp-freshbooks), [ActiveCampaign](https://github.com/AlexlaGuardia/mcp-activecampaign). Follow me here or on [GitHub](https://github.com/AlexlaGuardia) to catch the next one.*
