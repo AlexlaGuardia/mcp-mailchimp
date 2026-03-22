@@ -1,4 +1,9 @@
 {
   "$schema": "https://glama.ai/mcp/schemas/server.json",
-  "maintainers": ["AlexlaGuardia"]
+  "maintainers": ["AlexlaGuardia"],
+  "relatedMcpServers": [
+    "AlexlaGuardia/MCP-WooCommerce",
+    "AlexlaGuardia/MCP-Freshbooks",
+    "AlexlaGuardia/MCP-Activecampaign"
+  ]
 }
