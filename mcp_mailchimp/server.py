@@ -814,7 +814,15 @@ async def start_automation(workflow_id: str) -> str:
 
 
 def main() -> None:
-    mcp.run(transport="stdio")
+    standby_port = os.environ.get("ACTOR_STANDBY_PORT")
+    if standby_port:
+        # Running on Apify — use Streamable HTTP transport
+        os.environ.setdefault("FASTMCP_HOST", "0.0.0.0")
+        os.environ.setdefault("FASTMCP_PORT", standby_port)
+        os.environ.setdefault("FASTMCP_STREAMABLE_HTTP_PATH", "/mcp")
+        mcp.run(transport="streamable-http")
+    else:
+        mcp.run(transport="stdio")
 
 
 if __name__ == "__main__":

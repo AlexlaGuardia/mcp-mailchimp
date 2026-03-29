@@ -1,0 +1,17 @@
+{
+    "title": "Mailchimp MCP Server",
+    "description": "Production-grade MCP server for the Mailchimp Marketing API with 33 tools for campaigns, audiences, members, tags, segments, templates, reports, and automations.",
+    "type": "object",
+    "schemaVersion": 1,
+    "properties": {
+        "mailchimpApiKey": {
+            "title": "Mailchimp API Key",
+            "description": "Your Mailchimp API key in the format 'xxxxxxxxxx-usXX'. Get one at https://mailchimp.com/help/about-api-keys/",
+            "type": "string",
+            "editor": "textfield",
+            "isSecret": true,
+            "prefill": ""
+        }
+    },
+    "required": ["mailchimpApiKey"]
+}
