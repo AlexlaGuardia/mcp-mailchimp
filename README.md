@@ -1,8 +1,19 @@
 # mcp-mailchimp
+[![MCPize](https://mcpize.com/badge/@AlexlaGuardia/mailchimp)](https://mcpize.com/mcp/mailchimp)
 
 Production-grade MCP server for the [Mailchimp Marketing API](https://mailchimp.com/developer/marketing/). 33 tools covering campaigns, audiences, members, tags, segments, templates, reports, and automations.
 
 Built for Claude Desktop, Claude Code, Cursor, and any MCP-compatible client.
+
+## Connect via MCPize
+
+Use this MCP server instantly with no local installation:
+
+```bash
+npx -y mcpize connect @AlexlaGuardia/mailchimp --client claude
+```
+
+Or connect at: **https://mcpize.com/mcp/mailchimp**
 
 ## Quick Start
 
