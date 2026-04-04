@@ -1,0 +1,11 @@
+version: 1
+name: mailchimp
+runtime: python
+entry: mcp_mailchimp/server.py
+
+build:
+  install: pip install -r requirements.txt
+
+startCommand:
+  type: http
+  command: python -m mcp_mailchimp.server
