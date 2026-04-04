@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mcp-mailchimp"
-version = "0.2.0"
-description = "Production-grade MCP server for the Mailchimp Marketing API — 33 tools for campaigns, audiences, members, tags, segments, templates, reports, and automations."
+version = "0.3.0"
+description = "Production-grade MCP server for the Mailchimp Marketing API — 71 tools for campaigns, audiences, members, tags, segments, templates, reports, automations, webhooks, merge fields, interest groups, landing pages, batch operations, e-commerce, A/B testing, and audience analytics."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"

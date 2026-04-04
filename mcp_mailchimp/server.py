@@ -1,4 +1,4 @@
-"""MCP server for the Mailchimp Marketing API — 33 tools."""
+"""MCP server for the Mailchimp Marketing API — 71 tools."""
 
 import json
 import os
@@ -12,8 +12,10 @@ mcp = FastMCP(
     "mcp-mailchimp",
     instructions=(
         "Production-grade MCP server for the Mailchimp Marketing API. "
-        "33 tools for campaigns, audiences, members, tags, segments, "
-        "templates, reports, and automations."
+        "71 tools for campaigns, audiences, members, tags, segments, "
+        "templates, reports, automations, webhooks, merge fields, "
+        "interest groups, landing pages, batch operations, e-commerce, "
+        "A/B testing, member notes, file manager, and audience analytics."
     ),
 )
 
@@ -806,6 +808,853 @@ async def start_automation(workflow_id: str) -> str:
     mc = get_client()
     await mc.post(f"/automations/{workflow_id}/actions/start-all-emails")
     return _fmt({"workflow_id": workflow_id, "message": "Automation started."})
+
+
+@mcp.tool()
+async def get_automation(workflow_id: str) -> str:
+    """Get details for a specific automation including trigger, recipients, and stats."""
+    mc = get_client()
+    a = await mc.get(f"/automations/{workflow_id}")
+    s = a.get("settings", {})
+    r = a.get("recipients", {})
+    t = a.get("trigger_settings", {})
+    return _fmt({
+        "id": a["id"],
+        "title": s.get("title", ""),
+        "status": a.get("status", ""),
+        "emails_sent": a.get("emails_sent", 0),
+        "list_id": r.get("list_id", ""),
+        "list_name": r.get("list_name", ""),
+        "trigger_type": t.get("workflow_type", ""),
+        "start_time": a.get("start_time", ""),
+        "created_at": a.get("create_time", ""),
+    })
+
+
+@mcp.tool()
+async def list_automation_emails(workflow_id: str) -> str:
+    """List all emails in an automation workflow with their status, delay, and position."""
+    mc = get_client()
+    data = await mc.get(f"/automations/{workflow_id}/emails")
+    emails = []
+    for e in data.get("emails", []):
+        s = e.get("settings", {})
+        emails.append({
+            "id": e.get("id", ""),
+            "position": e.get("position", 0),
+            "status": e.get("status", ""),
+            "subject_line": s.get("subject_line", ""),
+            "from_name": s.get("from_name", ""),
+            "delay": e.get("delay", {}),
+            "emails_sent": e.get("emails_sent", 0),
+            "send_time": e.get("send_time", ""),
+        })
+    return _fmt({"workflow_id": workflow_id, "total_emails": len(emails), "emails": emails})
+
+
+# ══════════════════════════════════════════════════════════════════════
+# CAMPAIGN OPS (delete, unschedule, cancel)
+# ══════════════════════════════════════════════════════════════════════
+
+
+@mcp.tool()
+async def delete_campaign(campaign_id: str) -> str:
+    """Permanently delete a campaign. Only works on campaigns that haven't been sent."""
+    mc = get_client()
+    await mc.delete(f"/campaigns/{campaign_id}")
+    return _fmt({"campaign_id": campaign_id, "message": "Campaign deleted permanently."})
+
+
+@mcp.tool()
+async def unschedule_campaign(campaign_id: str) -> str:
+    """Unschedule a scheduled campaign, returning it to 'save' status."""
+    mc = get_client()
+    await mc.post(f"/campaigns/{campaign_id}/actions/unschedule")
+    return _fmt({"campaign_id": campaign_id, "message": "Campaign unscheduled."})
+
+
+@mcp.tool()
+async def cancel_campaign(campaign_id: str) -> str:
+    """Cancel a campaign that is currently sending. Only works during the send window."""
+    mc = get_client()
+    await mc.post(f"/campaigns/{campaign_id}/actions/cancel-send")
+    return _fmt({"campaign_id": campaign_id, "message": "Campaign send cancelled."})
+
+
+# ══════════════════════════════════════════════════════════════════════
+# AUDIENCE OPS (update, batch subscribe)
+# ══════════════════════════════════════════════════════════════════════
+
+
+@mcp.tool()
+async def update_audience(
+    list_id: str,
+    name: str = "",
+    from_email: str = "",
+    from_name: str = "",
+    permission_reminder: str = "",
+) -> str:
+    """Update audience settings. Only provide fields you want to change."""
+    mc = get_client()
+    body: dict[str, Any] = {}
+    if name:
+        body["name"] = name
+    if permission_reminder:
+        body["permission_reminder"] = permission_reminder
+    defaults: dict[str, str] = {}
+    if from_email:
+        defaults["from_email"] = from_email
+    if from_name:
+        defaults["from_name"] = from_name
+    if defaults:
+        body["campaign_defaults"] = defaults
+    if not body:
+        return "No fields provided to update."
+    a = await mc.patch(f"/lists/{list_id}", json=body)
+    return _fmt({
+        "id": a["id"],
+        "name": a.get("name", ""),
+        "message": "Audience updated.",
+    })
+
+
+@mcp.tool()
+async def batch_subscribe_members(
+    list_id: str,
+    emails: str,
+    status: str = "subscribed",
+) -> str:
+    """Batch subscribe multiple members at once. emails: comma-separated list (max 500)."""
+    mc = get_client()
+    members = []
+    for email in emails.split(","):
+        email = email.strip()
+        if email:
+            members.append({
+                "email_address": email.lower(),
+                "status": status,
+            })
+    if not members:
+        return "No valid email addresses provided."
+    data = await mc.post(f"/lists/{list_id}", json={
+        "members": members[:500],
+        "update_existing": False,
+    })
+    return _fmt({
+        "new_members": data.get("new_members", 0) if isinstance(data.get("new_members"), int) else len(data.get("new_members", [])),
+        "updated_members": data.get("updated_members", 0) if isinstance(data.get("updated_members"), int) else len(data.get("updated_members", [])),
+        "error_count": data.get("error_count", 0),
+        "errors": [e.get("email_address", "") for e in data.get("errors", [])[:10]],
+        "message": "Batch subscribe complete.",
+    })
+
+
+# ══════════════════════════════════════════════════════════════════════
+# MEMBER OPS (permanent delete)
+# ══════════════════════════════════════════════════════════════════════
+
+
+@mcp.tool()
+async def delete_member_permanent(list_id: str, email: str) -> str:
+    """Permanently delete a subscriber. Cannot be undone — the contact cannot be re-imported."""
+    mc = get_client()
+    h = mc.subscriber_hash(email)
+    await mc.post(f"/lists/{list_id}/members/{h}/actions/delete-permanent")
+    return _fmt({"email": email, "message": "Member permanently deleted."})
+
+
+# ══════════════════════════════════════════════════════════════════════
+# MERGE FIELDS
+# ══════════════════════════════════════════════════════════════════════
+
+
+@mcp.tool()
+async def list_merge_fields(list_id: str, count: int = 50) -> str:
+    """List merge fields (custom fields) for an audience — FNAME, LNAME, plus any custom ones."""
+    mc = get_client()
+    data = await mc.get(
+        f"/lists/{list_id}/merge-fields",
+        params={"count": min(count, 100)},
+    )
+    fields = []
+    for f in data.get("merge_fields", []):
+        fields.append({
+            "merge_id": f.get("merge_id", ""),
+            "tag": f.get("tag", ""),
+            "name": f.get("name", ""),
+            "type": f.get("type", ""),
+            "required": f.get("required", False),
+            "default_value": f.get("default_value", ""),
+            "public": f.get("public", False),
+        })
+    return _fmt({"total_items": data.get("total_items", 0), "merge_fields": fields})
+
+
+@mcp.tool()
+async def create_merge_field(
+    list_id: str,
+    name: str,
+    field_type: str = "text",
+    tag: str = "",
+    required: bool = False,
+    default_value: str = "",
+) -> str:
+    """Create a custom merge field. field_type: text, number, address, phone, date, url, dropdown, radio, birthday."""
+    mc = get_client()
+    body: dict[str, Any] = {
+        "name": name,
+        "type": field_type,
+        "required": required,
+    }
+    if tag:
+        body["tag"] = tag.upper()
+    if default_value:
+        body["default_value"] = default_value
+    f = await mc.post(f"/lists/{list_id}/merge-fields", json=body)
+    return _fmt({
+        "merge_id": f.get("merge_id", ""),
+        "tag": f.get("tag", ""),
+        "name": f.get("name", ""),
+        "type": f.get("type", ""),
+        "message": "Merge field created.",
+    })
+
+
+# ══════════════════════════════════════════════════════════════════════
+# INTEREST CATEGORIES & GROUPS
+# ══════════════════════════════════════════════════════════════════════
+
+
+@mcp.tool()
+async def list_interest_categories(list_id: str) -> str:
+    """List interest categories (groups) for an audience — checkboxes, dropdowns, radio buttons, etc."""
+    mc = get_client()
+    data = await mc.get(f"/lists/{list_id}/interest-categories")
+    categories = []
+    for c in data.get("categories", []):
+        categories.append({
+            "id": c.get("id", ""),
+            "title": c.get("title", ""),
+            "type": c.get("type", ""),
+            "display_order": c.get("display_order", 0),
+        })
+    return _fmt({"total_items": data.get("total_items", 0), "categories": categories})
+
+
+@mcp.tool()
+async def list_interests(list_id: str, category_id: str, count: int = 50) -> str:
+    """List interests (individual options) within a category — the actual checkbox/radio items."""
+    mc = get_client()
+    data = await mc.get(
+        f"/lists/{list_id}/interest-categories/{category_id}/interests",
+        params={"count": min(count, 100)},
+    )
+    interests = []
+    for i in data.get("interests", []):
+        interests.append({
+            "id": i.get("id", ""),
+            "name": i.get("name", ""),
+            "subscriber_count": i.get("subscriber_count", 0),
+            "display_order": i.get("display_order", 0),
+        })
+    return _fmt({"total_items": data.get("total_items", 0), "interests": interests})
+
+
+# ══════════════════════════════════════════════════════════════════════
+# TEMPLATE OPS (create, delete)
+# ══════════════════════════════════════════════════════════════════════
+
+
+@mcp.tool()
+async def create_template(name: str, html: str) -> str:
+    """Create a new email template from HTML content."""
+    mc = get_client()
+    t = await mc.post("/templates", json={"name": name, "html": html})
+    return _fmt({
+        "id": t.get("id", ""),
+        "name": t.get("name", ""),
+        "type": t.get("type", ""),
+        "message": "Template created.",
+    })
+
+
+@mcp.tool()
+async def delete_template(template_id: int) -> str:
+    """Delete a custom email template. Cannot delete Mailchimp's built-in templates."""
+    mc = get_client()
+    await mc.delete(f"/templates/{template_id}")
+    return _fmt({"template_id": template_id, "message": "Template deleted."})
+
+
+# ══════════════════════════════════════════════════════════════════════
+# SEGMENT OPS (update, delete)
+# ══════════════════════════════════════════════════════════════════════
+
+
+@mcp.tool()
+async def update_segment(
+    list_id: str,
+    segment_id: str,
+    name: str = "",
+    emails_to_add: str = "",
+    emails_to_remove: str = "",
+) -> str:
+    """Update a static segment — rename or add/remove members. emails: comma-separated."""
+    mc = get_client()
+    body: dict[str, Any] = {}
+    if name:
+        body["name"] = name
+    if emails_to_add:
+        body["members_to_add"] = [e.strip() for e in emails_to_add.split(",") if e.strip()]
+    if emails_to_remove:
+        body["members_to_remove"] = [e.strip() for e in emails_to_remove.split(",") if e.strip()]
+    if not body:
+        return "Provide name, emails_to_add, or emails_to_remove."
+    s = await mc.patch(f"/lists/{list_id}/segments/{segment_id}", json=body)
+    return _fmt({
+        "id": s.get("id", ""),
+        "name": s.get("name", ""),
+        "member_count": s.get("member_count", 0),
+        "message": "Segment updated.",
+    })
+
+
+@mcp.tool()
+async def delete_segment(list_id: str, segment_id: str) -> str:
+    """Delete a segment from an audience."""
+    mc = get_client()
+    await mc.delete(f"/lists/{list_id}/segments/{segment_id}")
+    return _fmt({"segment_id": segment_id, "message": "Segment deleted."})
+
+
+# ══════════════════════════════════════════════════════════════════════
+# WEBHOOKS
+# ══════════════════════════════════════════════════════════════════════
+
+
+@mcp.tool()
+async def list_webhooks(list_id: str) -> str:
+    """List webhooks configured for an audience."""
+    mc = get_client()
+    data = await mc.get(f"/lists/{list_id}/webhooks")
+    hooks = []
+    for w in data.get("webhooks", []):
+        hooks.append({
+            "id": w.get("id", ""),
+            "url": w.get("url", ""),
+            "events": w.get("events", {}),
+            "sources": w.get("sources", {}),
+        })
+    return _fmt({"total_items": len(hooks), "webhooks": hooks})
+
+
+@mcp.tool()
+async def create_webhook(
+    list_id: str,
+    url: str,
+    subscribe: bool = True,
+    unsubscribe: bool = True,
+    profile: bool = True,
+    cleaned: bool = True,
+    campaign: bool = False,
+) -> str:
+    """Create a webhook for audience events. Configure which events trigger the callback."""
+    mc = get_client()
+    body = {
+        "url": url,
+        "events": {
+            "subscribe": subscribe,
+            "unsubscribe": unsubscribe,
+            "profile": profile,
+            "cleaned": cleaned,
+            "campaign": campaign,
+        },
+        "sources": {"user": True, "admin": True, "api": True},
+    }
+    w = await mc.post(f"/lists/{list_id}/webhooks", json=body)
+    return _fmt({
+        "id": w.get("id", ""),
+        "url": w.get("url", ""),
+        "message": "Webhook created.",
+    })
+
+
+@mcp.tool()
+async def delete_webhook(list_id: str, webhook_id: str) -> str:
+    """Delete a webhook from an audience."""
+    mc = get_client()
+    await mc.delete(f"/lists/{list_id}/webhooks/{webhook_id}")
+    return _fmt({"webhook_id": webhook_id, "message": "Webhook deleted."})
+
+
+# ══════════════════════════════════════════════════════════════════════
+# REPORTS (unsubscribes, sent-to)
+# ══════════════════════════════════════════════════════════════════════
+
+
+@mcp.tool()
+async def get_unsubscribe_report(campaign_id: str, count: int = 20, offset: int = 0) -> str:
+    """Get unsubscribe details for a campaign — who unsubscribed and why."""
+    mc = get_client()
+    data = await mc.get(
+        f"/reports/{campaign_id}/unsubscribed",
+        params={"count": min(count, 100), "offset": offset},
+    )
+    unsubs = []
+    for u in data.get("unsubscribes", []):
+        unsubs.append({
+            "email": u.get("email_address", ""),
+            "reason": u.get("reason", ""),
+            "timestamp": u.get("timestamp", ""),
+            "campaign_id": u.get("campaign_id", ""),
+        })
+    return _fmt({
+        "campaign_id": campaign_id,
+        "total_items": data.get("total_items", 0),
+        "unsubscribes": unsubs,
+    })
+
+
+@mcp.tool()
+async def get_sent_to_report(campaign_id: str, status: str = "", count: int = 20, offset: int = 0) -> str:
+    """Get delivery details — which members received the email and their status (sent, hard, soft)."""
+    mc = get_client()
+    params: dict[str, Any] = {"count": min(count, 100), "offset": offset}
+    if status:
+        params["status"] = status
+    data = await mc.get(f"/reports/{campaign_id}/sent-to", params=params)
+    recipients = []
+    for r in data.get("sent_to", []):
+        recipients.append({
+            "email": r.get("email_address", ""),
+            "status": r.get("status", ""),
+            "open_count": r.get("open_count", 0),
+            "last_open": r.get("last_open", ""),
+        })
+    return _fmt({
+        "campaign_id": campaign_id,
+        "total_items": data.get("total_items", 0),
+        "recipients": recipients,
+    })
+
+
+# ══════════════════════════════════════════════════════════════════════
+# LANDING PAGES
+# ══════════════════════════════════════════════════════════════════════
+
+
+@mcp.tool()
+async def list_landing_pages(count: int = 20) -> str:
+    """List landing pages with their status, visits, and conversion stats."""
+    mc = get_client()
+    data = await mc.get("/landing-pages", params={"count": min(count, 100)})
+    pages = []
+    for p in data.get("landing_pages", []):
+        pages.append({
+            "id": p.get("id", ""),
+            "name": p.get("name", ""),
+            "title": p.get("title", ""),
+            "status": p.get("status", ""),
+            "url": p.get("url", ""),
+            "list_id": p.get("list_id", ""),
+            "visits": p.get("tracking", {}).get("visits", 0),
+            "unique_visits": p.get("tracking", {}).get("unique_visits", 0),
+            "subscribes": p.get("tracking", {}).get("subscribes", 0),
+            "published_at": p.get("published_at", ""),
+        })
+    return _fmt({"total_items": len(pages), "landing_pages": pages})
+
+
+@mcp.tool()
+async def get_landing_page(page_id: str) -> str:
+    """Get details for a specific landing page including tracking stats."""
+    mc = get_client()
+    p = await mc.get(f"/landing-pages/{page_id}")
+    t = p.get("tracking", {})
+    return _fmt({
+        "id": p.get("id", ""),
+        "name": p.get("name", ""),
+        "title": p.get("title", ""),
+        "status": p.get("status", ""),
+        "url": p.get("url", ""),
+        "list_id": p.get("list_id", ""),
+        "visits": t.get("visits", 0),
+        "unique_visits": t.get("unique_visits", 0),
+        "subscribes": t.get("subscribes", 0),
+        "clicks": t.get("clicks", 0),
+        "published_at": p.get("published_at", ""),
+        "created_at": p.get("created_at", ""),
+        "updated_at": p.get("updated_at", ""),
+    })
+
+
+# ══════════════════════════════════════════════════════════════════════
+# BATCH OPERATIONS
+# ══════════════════════════════════════════════════════════════════════
+
+
+@mcp.tool()
+async def create_batch_operation(operations: str) -> str:
+    """Submit a batch of API operations. operations: JSON array of {method, path, body} objects. Max 500 ops."""
+    mc = get_client()
+    import json as _json
+    try:
+        ops = _json.loads(operations)
+    except _json.JSONDecodeError:
+        return "Invalid JSON. Provide an array of {method, path, body} objects."
+    if not isinstance(ops, list):
+        return "operations must be a JSON array."
+    data = await mc.post("/batches", json={"operations": ops[:500]})
+    return _fmt({
+        "batch_id": data.get("id", ""),
+        "status": data.get("status", ""),
+        "total_operations": data.get("total_operations", 0),
+        "submitted_at": data.get("submitted_at", ""),
+        "message": "Batch submitted. Check status with the batch ID.",
+    })
+
+
+# ══════════════════════════════════════════════════════════════════════
+# E-COMMERCE (stores, products, orders, carts, customers, promo codes)
+# ══════════════════════════════════════════════════════════════════════
+
+
+@mcp.tool()
+async def list_ecommerce_stores(count: int = 20) -> str:
+    """List connected e-commerce stores (Shopify, WooCommerce, etc.) with revenue stats."""
+    mc = get_client()
+    data = await mc.get("/ecommerce/stores", params={"count": min(count, 100)})
+    stores = []
+    for s in data.get("stores", []):
+        stores.append({
+            "id": s.get("id", ""),
+            "name": s.get("name", ""),
+            "platform": s.get("platform", ""),
+            "domain": s.get("domain", ""),
+            "list_id": s.get("list_id", ""),
+            "currency_code": s.get("currency_code", ""),
+            "money_format": s.get("money_format", ""),
+            "is_syncing": s.get("is_syncing", False),
+            "created_at": s.get("created_at", ""),
+        })
+    return _fmt({"total_items": data.get("total_items", 0), "stores": stores})
+
+
+@mcp.tool()
+async def list_store_products(store_id: str, count: int = 20, offset: int = 0) -> str:
+    """List products in a connected e-commerce store."""
+    mc = get_client()
+    data = await mc.get(
+        f"/ecommerce/stores/{store_id}/products",
+        params={"count": min(count, 100), "offset": offset},
+    )
+    products = []
+    for p in data.get("products", []):
+        products.append({
+            "id": p.get("id", ""),
+            "title": p.get("title", ""),
+            "handle": p.get("handle", ""),
+            "url": p.get("url", ""),
+            "type": p.get("type", ""),
+            "vendor": p.get("vendor", ""),
+            "image_url": p.get("image_url", ""),
+            "variants": len(p.get("variants", [])),
+            "published_at": p.get("published_at_foreign", ""),
+        })
+    return _fmt({"total_items": data.get("total_items", 0), "products": products})
+
+
+@mcp.tool()
+async def list_store_orders(
+    store_id: str,
+    count: int = 20,
+    offset: int = 0,
+    campaign_id: str = "",
+) -> str:
+    """List orders from a connected store. Optionally filter by campaign_id to see revenue attribution."""
+    mc = get_client()
+    params: dict[str, Any] = {"count": min(count, 100), "offset": offset}
+    if campaign_id:
+        params["campaign_id"] = campaign_id
+    data = await mc.get(f"/ecommerce/stores/{store_id}/orders", params=params)
+    orders = []
+    for o in data.get("orders", []):
+        orders.append({
+            "id": o.get("id", ""),
+            "customer": o.get("customer", {}).get("email_address", ""),
+            "financial_status": o.get("financial_status", ""),
+            "fulfillment_status": o.get("fulfillment_status", ""),
+            "order_total": o.get("order_total", 0),
+            "currency_code": o.get("currency_code", ""),
+            "lines_count": len(o.get("lines", [])),
+            "campaign_id": o.get("campaign_id", ""),
+            "landing_site": o.get("landing_site", ""),
+            "processed_at": o.get("processed_at_foreign", ""),
+        })
+    return _fmt({"total_items": data.get("total_items", 0), "orders": orders})
+
+
+@mcp.tool()
+async def get_ecommerce_customer(store_id: str, customer_id: str) -> str:
+    """Get e-commerce customer details including order count and total spent."""
+    mc = get_client()
+    c = await mc.get(f"/ecommerce/stores/{store_id}/customers/{customer_id}")
+    return _fmt({
+        "id": c.get("id", ""),
+        "email": c.get("email_address", ""),
+        "first_name": c.get("first_name", ""),
+        "last_name": c.get("last_name", ""),
+        "opt_in_status": c.get("opt_in_status", False),
+        "orders_count": c.get("orders_count", 0),
+        "total_spent": c.get("total_spent", 0),
+        "currency_code": c.get("currency_code", ""),
+        "created_at": c.get("created_at", ""),
+        "updated_at": c.get("updated_at", ""),
+    })
+
+
+@mcp.tool()
+async def list_store_carts(store_id: str, count: int = 20) -> str:
+    """List abandoned carts from a connected store — useful for abandoned cart recovery campaigns."""
+    mc = get_client()
+    data = await mc.get(
+        f"/ecommerce/stores/{store_id}/carts",
+        params={"count": min(count, 100)},
+    )
+    carts = []
+    for c in data.get("carts", []):
+        carts.append({
+            "id": c.get("id", ""),
+            "customer_email": c.get("customer", {}).get("email_address", ""),
+            "order_total": c.get("order_total", 0),
+            "currency_code": c.get("currency_code", ""),
+            "lines_count": len(c.get("lines", [])),
+            "checkout_url": c.get("checkout_url", ""),
+            "created_at": c.get("created_at", ""),
+            "updated_at": c.get("updated_at", ""),
+        })
+    return _fmt({"total_items": data.get("total_items", 0), "carts": carts})
+
+
+@mcp.tool()
+async def list_store_promo_codes(store_id: str, promo_rule_id: str, count: int = 20) -> str:
+    """List promo codes for a specific promo rule in a connected store."""
+    mc = get_client()
+    data = await mc.get(
+        f"/ecommerce/stores/{store_id}/promo-rules/{promo_rule_id}/promo-codes",
+        params={"count": min(count, 100)},
+    )
+    codes = []
+    for c in data.get("promo_codes", []):
+        codes.append({
+            "id": c.get("id", ""),
+            "code": c.get("code", ""),
+            "redemption_url": c.get("redemption_url", ""),
+            "usage_count": c.get("usage_count", 0),
+            "enabled": c.get("enabled", True),
+            "created_at": c.get("created_at_foreign", ""),
+            "updated_at": c.get("updated_at_foreign", ""),
+        })
+    return _fmt({"total_items": data.get("total_items", 0), "promo_codes": codes})
+
+
+# ══════════════════════════════════════════════════════════════════════
+# AUDIENCE ANALYTICS (growth, locations, email clients)
+# ══════════════════════════════════════════════════════════════════════
+
+
+@mcp.tool()
+async def get_audience_growth(list_id: str, count: int = 12) -> str:
+    """Get monthly audience growth history — subscribes, unsubscribes, and net change over time."""
+    mc = get_client()
+    data = await mc.get(
+        f"/lists/{list_id}/growth-history",
+        params={"count": min(count, 100), "sort_field": "month", "sort_dir": "DESC"},
+    )
+    history = []
+    for h in data.get("history", []):
+        history.append({
+            "month": h.get("month", ""),
+            "existing": h.get("existing", 0),
+            "imports": h.get("imports", 0),
+            "optins": h.get("optins", 0),
+        })
+    return _fmt({"list_id": list_id, "total_items": data.get("total_items", 0), "history": history})
+
+
+@mcp.tool()
+async def get_audience_locations(list_id: str, count: int = 20) -> str:
+    """Get subscriber location breakdown by country/region — where your audience lives."""
+    mc = get_client()
+    data = await mc.get(
+        f"/lists/{list_id}/locations",
+        params={"count": min(count, 100)},
+    )
+    locations = []
+    for loc in data.get("locations", []):
+        locations.append({
+            "country": loc.get("country", ""),
+            "cc": loc.get("cc", ""),
+            "percent": loc.get("percent", 0),
+            "total": loc.get("total", 0),
+        })
+    return _fmt({"list_id": list_id, "locations": locations})
+
+
+@mcp.tool()
+async def get_email_client_stats(campaign_id: str) -> str:
+    """Get email client usage for a campaign — Gmail, Apple Mail, Outlook breakdown."""
+    mc = get_client()
+    data = await mc.get(f"/reports/{campaign_id}/domain-performance")
+    domains = []
+    for d in data.get("domains", []):
+        domains.append({
+            "domain": d.get("domain", ""),
+            "emails_sent": d.get("emails_sent", 0),
+            "bounces": d.get("bounces", 0),
+            "opens": d.get("opens", 0),
+            "clicks": d.get("clicks", 0),
+            "unsubs": d.get("unsubs", 0),
+            "delivered": d.get("delivered", 0),
+            "emails_pct": d.get("emails_pct", 0),
+            "bounces_pct": d.get("bounces_pct", 0),
+            "opens_pct": d.get("opens_pct", 0),
+            "clicks_pct": d.get("clicks_pct", 0),
+        })
+    return _fmt({
+        "campaign_id": campaign_id,
+        "total_domains": len(domains),
+        "domains": domains,
+    })
+
+
+# ══════════════════════════════════════════════════════════════════════
+# A/B TESTING (variate campaign results)
+# ══════════════════════════════════════════════════════════════════════
+
+
+@mcp.tool()
+async def get_ab_test_results(campaign_id: str) -> str:
+    """Get A/B test (variate) results for a campaign — which combination won and performance of each."""
+    mc = get_client()
+    c = await mc.get(f"/campaigns/{campaign_id}")
+    v = c.get("variate_settings", {})
+    if not v:
+        return _fmt({"error": "This campaign is not an A/B test (variate) campaign."})
+    # Get the report for full performance data
+    r = await mc.get(f"/reports/{campaign_id}")
+    return _fmt({
+        "campaign_id": campaign_id,
+        "test_type": v.get("test_size", ""),
+        "winning_criteria": v.get("winner_criteria", ""),
+        "wait_time": v.get("wait_time", 0),
+        "winner_campaign_id": v.get("winning_campaign_id", ""),
+        "winner_combination_id": v.get("winning_combination_id", ""),
+        "combinations": v.get("combinations", []),
+        "subject_lines": v.get("subject_lines", []),
+        "from_names": v.get("from_names", []),
+        "send_times": v.get("send_times", []),
+        "report": {
+            "emails_sent": r.get("emails_sent", 0),
+            "opens": r.get("opens", {}).get("unique_opens", 0),
+            "open_rate": r.get("opens", {}).get("open_rate", 0),
+            "clicks": r.get("clicks", {}).get("unique_clicks", 0),
+            "click_rate": r.get("clicks", {}).get("click_rate", 0),
+        },
+    })
+
+
+# ══════════════════════════════════════════════════════════════════════
+# MEMBER NOTES
+# ══════════════════════════════════════════════════════════════════════
+
+
+@mcp.tool()
+async def list_member_notes(list_id: str, email: str, count: int = 20) -> str:
+    """List notes on a subscriber — internal CRM-style notes attached to a contact."""
+    mc = get_client()
+    h = mc.subscriber_hash(email)
+    data = await mc.get(
+        f"/lists/{list_id}/members/{h}/notes",
+        params={"count": min(count, 100)},
+    )
+    notes = []
+    for n in data.get("notes", []):
+        notes.append({
+            "id": n.get("note_id", ""),
+            "note": n.get("note", ""),
+            "created_at": n.get("created_at", ""),
+            "created_by": n.get("created_by", ""),
+            "updated_at": n.get("updated_at", ""),
+        })
+    return _fmt({"email": email, "total_items": data.get("total_items", 0), "notes": notes})
+
+
+@mcp.tool()
+async def add_member_note(list_id: str, email: str, note: str) -> str:
+    """Add a note to a subscriber — useful for CRM-style contact management."""
+    mc = get_client()
+    h = mc.subscriber_hash(email)
+    n = await mc.post(
+        f"/lists/{list_id}/members/{h}/notes",
+        json={"note": note},
+    )
+    return _fmt({
+        "note_id": n.get("note_id", ""),
+        "email": email,
+        "note": n.get("note", ""),
+        "created_at": n.get("created_at", ""),
+        "message": "Note added.",
+    })
+
+
+# ══════════════════════════════════════════════════════════════════════
+# FILE MANAGER
+# ══════════════════════════════════════════════════════════════════════
+
+
+@mcp.tool()
+async def list_files(count: int = 20, offset: int = 0, file_type: str = "") -> str:
+    """List files in the Mailchimp file manager. Filter by file_type: image, file."""
+    mc = get_client()
+    params: dict[str, Any] = {"count": min(count, 100), "offset": offset}
+    if file_type:
+        params["type"] = file_type
+    data = await mc.get("/file-manager/files", params=params)
+    files = []
+    for f in data.get("files", []):
+        files.append({
+            "id": f.get("id", ""),
+            "name": f.get("name", ""),
+            "type": f.get("type", ""),
+            "size": f.get("size", 0),
+            "full_size_url": f.get("full_size_url", ""),
+            "thumbnail_url": f.get("thumbnail_url", ""),
+            "folder_id": f.get("folder_id", 0),
+            "created_at": f.get("created_at", ""),
+        })
+    return _fmt({"total_items": data.get("total_items", 0), "files": files})
+
+
+@mcp.tool()
+async def upload_file(name: str, file_data_base64: str, folder_id: int = 0) -> str:
+    """Upload a file to the Mailchimp file manager. file_data_base64: base64-encoded file content."""
+    mc = get_client()
+    body: dict[str, Any] = {
+        "name": name,
+        "file_data": file_data_base64,
+    }
+    if folder_id:
+        body["folder_id"] = folder_id
+    f = await mc.post("/file-manager/files", json=body)
+    return _fmt({
+        "id": f.get("id", ""),
+        "name": f.get("name", ""),
+        "type": f.get("type", ""),
+        "full_size_url": f.get("full_size_url", ""),
+        "size": f.get("size", 0),
+        "message": "File uploaded.",
+    })
 
 
 # ══════════════════════════════════════════════════════════════════════
